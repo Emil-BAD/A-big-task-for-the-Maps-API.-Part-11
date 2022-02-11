@@ -11,7 +11,7 @@ from bis import find_business
 
 # это не готовое решение. Здесь лишь примеры реализации некоторой функциональности из задач урока.
 
-# Подобранные константы для поведения карты.
+# Подобранные константы для поведения карты
 LAT_STEP = 0.002  # Шаги при движении карты по широте и долготе
 LON_STEP = 0.002
 API_KEY = "40d1649f-0493-4b70-98ba-98533de7710b"
@@ -31,6 +31,7 @@ class SearchResult(object):
     def __init__(self, point, address, postal_code=None):
         self.point = point
         self.address = address
+        self.postal_code = postal_code
 
 
 # Параметры отображения карты:
@@ -77,6 +78,8 @@ class MapParams(object):
             self.type = "sat,skl"
         elif event.key == pygame.K_DELETE:  # DELETE
             self.search_result = None
+        elif event.key == pygame.K_INSERT:  # INSERT
+            self.use_postal_code = not self.use_postal_code
         elif event.key == pygame.K_TAB:  # TAB
             try:
                 self.lon, self.lat = get_coordinates(input_field())  # Enter
@@ -108,7 +111,18 @@ class MapParams(object):
             toponym = reverse_geocode(ll(pos[0], pos[1]))
         self.search_result = SearchResult(
             point,
-            toponym["metaDataProperty"]["GeocoderMetaData"]["text"] if toponym else None)
+            toponym["metaDataProperty"]["GeocoderMetaData"]["text"] if toponym else None,
+            toponym["metaDataProperty"]["GeocoderMetaData"]["Address"].get(
+                "postal_code") if toponym else None)
+
+    # Добавить результат поиска организации на карту.
+    def add_reverse_org_search(self, pos):
+        self.search_result = None
+        point = self.screen_to_geo(pos)
+        org = find_business(ll(point[0], point[1]))
+        if not org:
+            return
+        org_point = org["geometry"]["coordinates"]
 
 
 # Создание карты с соответствующими параметрами.
@@ -141,7 +155,6 @@ def load_map(mp):
 
 # Создание холста с текстом.
 def render_text(text):
-
     font = pygame.font.Font(None, 23)
     return font.render(text, 1, (100, 0, 100))
 
@@ -224,6 +237,9 @@ def main():
                 break
             elif event.type == pygame.KEYUP:  # Обрабатываем различные нажатые клавиши.
                 mp.update(event)
+            elif event.type == pygame.MOUSEBUTTONUP:  # Выполняем поиск по клику мышки.
+                if event.button == 1:  # LEFT_MOUSE_BUTTON
+                    mp.add_reverse_toponym_search(False, event.pos)
             else:
                 continue
 
@@ -232,8 +248,12 @@ def main():
 
         # Рисуем картинку, загружаемую из только что созданного файла.
         screen.blit(pygame.image.load(map_file), (0, 0))
+        # Добавляем подписи на экран, если они нужны.
         if mp.search_result:
-            text = render_text(mp.search_result.address)
+            if mp.use_postal_code and mp.search_result.postal_code:
+                text = render_text(mp.search_result.postal_code + ", " + mp.search_result.address)
+            else:
+                text = render_text(mp.search_result.address)
             screen.blit(text, (5, 400))
         # Переключаем экран и ждем закрытия окна.
         pygame.display.flip()
